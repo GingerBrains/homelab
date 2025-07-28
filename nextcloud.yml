@@ -1,4 +1,4 @@
-version: "3.8"
+version: "2.1"
 services:
   nextcloud:
     image: lscr.io/linuxserver/nextcloud:latest
@@ -6,29 +6,28 @@ services:
     environment:
       - PUID=1000
       - PGID=1000
-      - TZ=Etc/UTC
+      - TZ=Europe/Dublin
+      - MYSQL_PASSWORD=YOUR_DB_PASSWORD
+      - MYSQL_DATABASE=nextcloud
+      - MYSQL_USER=nextcloud
+      - MYSQL_HOST=mariadb
     volumes:
-      - /path/to/nextcloud/config:/config
-      - /path/to/data:/data
+      - /home/YOUR_USER/docker/nextcloud/appdata:/config
+      - /storage:/data
     ports:
-      - 443:443
+      - 8080:80
     restart: unless-stopped
     depends_on:
-      - db
-  db:
-    image: lscr.io/linuxserver/mariadb:latest
+      - mariadb
+
+  mariadb:
+    image: mariadb:10.11
     container_name: mariadb
+    restart: unless-stopped
     environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Etc/UTC
-      - MYSQL_ROOT_PASSWORD=ROOT_ACCESS_PASSWORD
-      - MYSQL_DATABASE=USER_DB_NAME #optional
-      - MYSQL_USER=MYSQL_USER #optional
-      - MYSQL_PASSWORD=DATABASE_PASSWORD #optional
-      - REMOTE_SQL=http://URL1/your.sql,https://URL2/your.sql #optional
+      - MYSQL_ROOT_PASSWORD=YOUR_ROOT_PASSWORD
+      - MYSQL_DATABASE=nextcloud
+      - MYSQL_USER=nextcloud
+      - MYSQL_PASSWORD=YOUR_DB_PASSWORD
     volumes:
-      - /path/to/mariadb/config:/config
-    ports:
-      - 3306:3306
-    restart: unless-stopped 
+      - /home/YOUR_USER/docker/nextcloud/db:/var/lib/mysql 

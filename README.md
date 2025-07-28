@@ -1,349 +1,224 @@
-# Personal Ubuntu Server Container Setup
-
-This guide documents the setup of my personal Ubuntu Server container in Proxmox, designed to host several self-hosted services for media, remote access, and network management.
+# Homelab Setup Guide
 
 ## Purpose
-
-This container is configured to run:
-- **Nextcloud** (personal cloud storage)
-- **Tailscale** (remote access VPN)
+This Ubuntu Server container running on Proxmox hosts various services for personal use:
+- **Nextcloud** (file storage and sharing)
+- **Tailscale** (remote access)
 - **Pi-hole** (network-wide ad blocking)
 - **Jellyfin** (media streaming)
 - **qBittorrent** (torrent client)
-- **Radarr** (movie downloader)
-- **Sonarr** (TV show downloader)
-- **Prowlarr** (indexer manager for Radarr/Sonarr)
-
----
+- **Radarr** (movie automation)
+- **Sonarr** (TV show automation)
+- **Prowlarr** (indexer management)
+- **Flaresolverr** (cloudflare bypass for indexers)
 
 ## System Details
-
-- **OS:** Ubuntu Server (version: `____`)
-- **Proxmox Container Type:** LXC
-- **Resources:** CPU: `____`, RAM: `____`, Storage: `____`
-- **Hostname:** `____`
-- **Network:** Static IP: `192.168.0.110`
-
----
+- **Host**: Proxmox VE
+- **Container**: Ubuntu Server LXC
+- **Static IP**: 192.168.0.110 (replace with your IP)
+- **Architecture**: x86_64
 
 ## Network Configuration
-
-- **Static IP** is configured for reliable access and port forwarding.
-- **Tailscale** is used for secure remote access.
-- **Pi-hole** is set as the DNS server for the local network.
-- Ports are mapped as needed for external access (see below).
-
----
-
-## Service Overview & Port Assignments
-
-All services are dockerized using [linuxserver.io](https://www.linuxserver.io/) images for easy management and automatic startup when the container boots. Each service has its own `docker-compose` YAML file (see below for details).
-
-| Service      | Host Port | Container Port | YAML File              |
-|--------------|-----------|---------------|------------------------|
-| Nextcloud    | 443       | 443           | nextcloud.yml          |
-| MariaDB      | 3306      | 3306          | nextcloud.yml (service)|
-| Jellyfin     | 8096      | 8096          | jellyfin.yml           |
-|              | 8920      | 8920          | jellyfin.yml           |
-|              | 7359/udp  | 7359/udp      | jellyfin.yml           |
-|              | 1900/udp  | 1900/udp      | jellyfin.yml           |
-| qBittorrent  | 8081      | 8080          | qbittorrent.yml        |
-|              | 6881      | 6881          | qbittorrent.yml        |
-|              | 6881/udp  | 6881/udp      | qbittorrent.yml        |
-| Radarr       | 7878      | 7878          | radarr.yml             |
-| Sonarr       | 8989      | 8989          | sonarr.yml             |
-| Prowlarr     | 9696      | 9696          | prowlarr.yml           |
-| Pi-hole      | 8053      | 53/udp,53/tcp | pihole.yml             |
-|              | 8080      | 80            | pihole.yml             |
-|              | 8443      | 443           | pihole.yml             |
-| Tailscale    | (managed) | (managed)     | tailscale.yml (if any) |
-
-- **Note:** Pi-hole's web interface is mapped to 8080 (host) to avoid conflict with Nextcloud's 443/HTTPS. Pi-hole's DNS is mapped to 8053 (host) to avoid conflicts. Jellyfin, qBittorrent, Radarr, Sonarr, and Prowlarr all use unique ports.
-- All other services use their default ports unless otherwise specified.
-
----
+- **Static IP**: 192.168.0.110 (replace with your IP)
+- **Gateway**: 192.168.0.1 (typical)
+- **DNS**: 8.8.8.8, 8.8.4.4 (or your Pi-hole IP)
 
 ## Installation Steps
 
-### 1. Update & Upgrade
+### 1. Initial Setup
 ```bash
+# Update system
 sudo apt update && sudo apt upgrade -y
+
+# Install Docker and Docker Compose
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+sudo usermod -aG docker $USER
+sudo systemctl enable docker
+sudo systemctl start docker
+
+# Install Docker Compose
+sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
 ```
 
-### 2. Install Core Utilities
-```bash
-sudo apt install curl wget git ufw -y
-```
-
-### 3. Install Tailscale
+### 2. Install Tailscale
 ```bash
 curl -fsSL https://tailscale.com/install.sh | sh
 sudo tailscale up
 ```
-_Follow the prompts to authenticate your device with your Tailscale account._
 
-### 4. Install Docker (for app containers)
+### 3. Scheduled Shutdown and Startup
+Add to crontab (`crontab -e`):
+```cron
+0 2 * * * /sbin/shutdown -h now
+0 8 * * * /sbin/poweron  # (Replace with your method to start the container, e.g., via Proxmox task or script)
+```
+
+### 4. Deploy Services
+Each service has its own Docker Compose file for easy management:
+
 ```bash
-sudo apt install apt-transport-https ca-certificates curl software-properties-common -y
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
-sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
-sudo apt update
-sudo apt install docker-ce docker-compose -y
+# Deploy individual services
+docker-compose -f nextcloud.yml up -d
+docker-compose -f jellyfin.yml up -d
+docker-compose -f qbittorrent.yml up -d
+docker-compose -f prowlarr.yml up -d
+docker-compose -f sonarr.yml up -d
+docker-compose -f radarr.yml up -d
+docker-compose -f flaresolverr.yml up -d
+docker-compose -f pihole.yml up -d
 ```
 
-### 5. Deploy Services
+## Service Overview & Port Assignments
 
-Each service has its own `docker-compose` YAML file. See the next section for the contents of each file. Start a service with:
-```bash
-sudo docker-compose -f <service>.yml up -d
-```
-
----
-
-## Tailscale & LXC Containers
-
-For best results, run this container as a **privileged LXC** in Proxmox. Tailscale requires access to `/dev/net/tun` and certain kernel capabilities that are restricted in unprivileged containers.
-
-- When creating the container, uncheck “Unprivileged container” in Proxmox.
-- Add these lines to `/etc/pve/lxc/<CTID>.conf` (replace `<CTID>` with your container ID):
-  ```
-  lxc.cgroup2.devices.allow: c 10:200 rwm
-  lxc.mount.entry: /dev/net/tun dev/net/tun none bind,create=file
-  features: keyctl=1,nesting=1
-  ```
-- Restart the container after making changes.
-
-**Security Note:** Privileged containers are less isolated from the host than unprivileged ones. For most homelab environments, this is an acceptable tradeoff for compatibility and ease of use.
-
-If you must use an unprivileged container, additional configuration is required and some Tailscale features may not work.
-
----
-
-## Docker Compose YAML Files
-
-### nextcloud.yml
-```yaml
-version: "3.8"
-services:
-  nextcloud:
-    image: lscr.io/linuxserver/nextcloud:latest
-    container_name: nextcloud
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Etc/UTC
-    volumes:
-      - /path/to/nextcloud/config:/config
-      - /path/to/data:/data
-    ports:
-      - 443:443
-    restart: unless-stopped
-    depends_on:
-      - db
-  db:
-    image: lscr.io/linuxserver/mariadb:latest
-    container_name: mariadb
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Etc/UTC
-      - MYSQL_ROOT_PASSWORD=ROOT_ACCESS_PASSWORD
-      - MYSQL_DATABASE=USER_DB_NAME #optional
-      - MYSQL_USER=MYSQL_USER #optional
-      - MYSQL_PASSWORD=DATABASE_PASSWORD #optional
-      - REMOTE_SQL=http://URL1/your.sql,https://URL2/your.sql #optional
-    volumes:
-      - /path/to/mariadb/config:/config
-    ports:
-      - 3306:3306
-    restart: unless-stopped
-```
-
-**Nextcloud Database Setup:**
-- When installing Nextcloud, use the following database settings:
-  - **Database user:** `MYSQL_USER` (from your environment)
-  - **Database password:** `DATABASE_PASSWORD` (from your environment)
-  - **Database name:** `USER_DB_NAME` (from your environment)
-  - **Database host:** `mariadb:3306`
-- The `mariadb` service name is used as the host because both containers are on the same Docker network.
-
-### jellyfin.yml
-```yaml
-version: "3.8"
-services:
-  jellyfin:
-    image: lscr.io/linuxserver/jellyfin:latest
-    container_name: jellyfin
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Etc/UTC
-      - JELLYFIN_PublishedServerUrl=http://192.168.0.5 #optional
-    volumes:
-      - /path/to/jellyfin/library:/config
-      - /path/to/tvseries:/data/tvshows
-      - /path/to/movies:/data/movies
-    ports:
-      - 8096:8096
-      - 8920:8920 #optional
-      - 7359:7359/udp #optional
-      - 1900:1900/udp #optional
-    restart: unless-stopped
-```
-
-### qbittorrent.yml
-```yaml
-version: "3.8"
-services:
-  qbittorrent:
-    image: lscr.io/linuxserver/qbittorrent:latest
-    container_name: qbittorrent
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Etc/UTC
-      - WEBUI_PORT=8080
-    volumes:
-      - /path/to/qbittorrent/config:/config
-      - /path/to/downloads:/downloads
-    ports:
-      - 8081:8080
-      - 6881:6881
-      - 6881:6881/udp
-    restart: unless-stopped
-```
-
-### radarr.yml
-```yaml
-version: "3.8"
-services:
-  radarr:
-    image: lscr.io/linuxserver/radarr:latest
-    container_name: radarr
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Etc/UTC
-    volumes:
-      - /path/to/radarr/data:/config
-      - /path/to/movies:/movies #optional
-      - /path/to/download-client-downloads:/downloads #optional
-    ports:
-      - 7878:7878
-    restart: unless-stopped
-```
-
-### sonarr.yml
-```yaml
-version: "3.8"
-services:
-  sonarr:
-    image: lscr.io/linuxserver/sonarr:latest
-    container_name: sonarr
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Etc/UTC
-    volumes:
-      - /path/to/sonarr/data:/config
-      - /path/to/tvseries:/tv #optional
-      - /path/to/downloadclient-downloads:/downloads #optional
-    ports:
-      - 8989:8989
-    restart: unless-stopped
-```
-
-### prowlarr.yml
-```yaml
-version: "3.8"
-services:
-  prowlarr:
-    image: lscr.io/linuxserver/prowlarr:latest
-    container_name: prowlarr
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Etc/UTC
-    volumes:
-      - /path/to/prowlarr/data:/config
-    ports:
-      - 9696:9696
-    restart: unless-stopped
-```
-
-### pihole.yml
-```yaml
-version: "3.8"
-services:
-  pihole:
-    image: pihole/pihole
-    container_name: pihole
-    environment:
-      - TZ=Etc/UTC
-      - WEBPASSWORD=yourpassword
-    volumes:
-      - /path/to/pihole/etc-pihole:/etc/pihole
-      - /path/to/pihole/etc-dnsmasq.d:/etc/dnsmasq.d
-    ports:
-      - 8053:53/tcp
-      - 8053:53/udp
-      - 8080:80
-      - 8443:443
-    cap_add:
-      - NET_ADMIN
-    restart: unless-stopped
-```
-
----
-
-## Scheduled Shutdown and Startup
-
-Automate shutdown at 2:00 AM and startup at 8:00 AM using cronjobs:
-
-1. Edit the root crontab:
-   ```bash
-   sudo crontab -e
-   ```
-2. Add these lines:
-   ```cron
-   0 2 * * * /sbin/shutdown -h now
-   0 8 * * * /sbin/poweron  # (Replace with your method to start the container, e.g., via Proxmox task or script)
-   ```
-   _Note: Starting a container may require a Proxmox scheduled task or external script, as containers can't self-start when powered off._
-
----
+| Service | Host Port | Container Port | YAML File | Purpose |
+|---------|-----------|----------------|-----------|---------|
+| Nextcloud | 8080 | 80 | `nextcloud.yml` | File storage |
+| Jellyfin | 8096 | 8096 | `jellyfin.yml` | Media streaming |
+| qBittorrent | 8081 | 8081 | `qbittorrent.yml` | Torrent client |
+| Prowlarr | 9696 | 9696 | `prowlarr.yml` | Indexer management |
+| Sonarr | 8989 | 8989 | `sonarr.yml` | TV automation |
+| Radarr | 7878 | 7878 | `radarr.yml` | Movie automation |
+| Flaresolverr | 8191 | 8191 | `flaresolverr.yml` | Cloudflare bypass |
+| Pi-hole | 8080 | 80 | `pihole.yml` | DNS/ad blocking |
 
 ## Accessing Services
+- **Nextcloud**: http://YOUR_IP:8080
+- **Jellyfin**: http://YOUR_IP:8096
+- **qBittorrent**: http://YOUR_IP:8081
+- **Prowlarr**: http://YOUR_IP:9696
+- **Sonarr**: http://YOUR_IP:8989
+- **Radarr**: http://YOUR_IP:7878
+- **Flaresolverr**: http://YOUR_IP:8191
+- **Pi-hole**: http://YOUR_IP:8080
 
-- **Nextcloud:** `https://192.168.0.110` (port 443)
-- **Jellyfin:** `http://192.168.0.110:8096`
-- **qBittorrent:** `http://192.168.0.110:8081`
-- **Radarr:** `http://192.168.0.110:7878`
-- **Sonarr:** `http://192.168.0.110:8989`
-- **Prowlarr:** `http://192.168.0.110:9696`
-- **Pi-hole:** `http://192.168.0.110:8080` (web) or DNS on `8053`
-- **Tailscale:** [Tailscale dashboard](https://login.tailscale.com/)
+## Storage Configuration
+This setup uses a hybrid storage approach:
+- **SSD**: Config files and Docker containers (default filesystem)
+- **HDD**: Bulk media and data storage (mounted at `/media/` and `/storage/`)
 
----
+### Volume Paths
+- **Nextcloud**: 
+  - Config: `/home/YOUR_USER/docker/nextcloud/appdata:/config`
+  - Data: `/storage:/data`
+  - Database: `/home/YOUR_USER/docker/nextcloud/db:/var/lib/mysql`
+- **Jellyfin**: 
+  - Config: `/home/YOUR_USER/docker/jellyfin/config:/config`
+  - TV: `/media/tvseries:/data/tvshows`
+  - Movies: `/media/movies:/data/movies`
+- **Download Services**:
+  - Configs: `/home/YOUR_USER/docker/[service]:/config`
+  - Downloads: `/media/downloads:/downloads`
+  - Media: `/media/[type]:/[type]`
+
+## Nextcloud Database Setup
+When setting up Nextcloud, use these database details:
+- **Database user**: `nextcloud`
+- **Database password**: `YOUR_DB_PASSWORD` (replace with secure password)
+- **Database name**: `nextcloud`
+- **Database host**: `mariadb:3306`
+- The `mariadb` service name is used as the host because both containers are on the same Docker network.
+
+## Tailscale & LXC Containers
+Tailscale works best in **privileged** LXC containers. Add these lines to your LXC container configuration:
+
+```
+lxc.cgroup2.devices.allow: c 10:200 rwm
+lxc.mount.entry: /dev/net/tun dev/net/tun none bind,create=file
+features: keyctl=1,nesting=1
+```
+
+## Storage Customization: Mounting HDDs for Media & Data
+
+### Mounting HDD in Proxmox LXC
+1. **Add disk to LXC container** in Proxmox web interface
+2. **Mount in container**:
+```bash
+# Create mount point
+sudo mkdir -p /media/movies /media/tvseries /media/downloads /storage
+
+# Mount (replace /dev/sdX with your actual device)
+sudo mount /dev/sdX1 /media/movies
+sudo mount /dev/sdX2 /media/tvseries
+sudo mount /dev/sdX3 /media/downloads
+sudo mount /dev/sdX4 /storage
+
+# Add to /etc/fstab for persistence
+echo "/dev/sdX1 /media/movies ext4 defaults 0 0" | sudo tee -a /etc/fstab
+echo "/dev/sdX2 /media/tvseries ext4 defaults 0 0" | sudo tee -a /etc/fstab
+echo "/dev/sdX3 /media/downloads ext4 defaults 0 0" | sudo tee -a /etc/fstab
+echo "/dev/sdX4 /storage ext4 defaults 0 0" | sudo tee -a /etc/fstab
+```
+
+### Example Docker Volume Paths
+```yaml
+volumes:
+  - /home/YOUR_USER/docker/jellyfin/config:/config    # SSD for configs
+  - /media/movies:/data/movies                      # HDD for bulk data
+```
+
+## Helpful Resources
+
+These YouTube videos were instrumental in setting up this homelab:
+
+- **[Proxmox Setup Guide](https://www.youtube.com/watch?v=qmSizZUbCOA&t=614s)** - Comprehensive guide for setting up Proxmox VE
+- **[Nextcloud Installation](https://www.youtube.com/watch?v=DFUmfHqQWyg&t=989s)** - Step-by-step Nextcloud setup with Docker
+- **[Jellyfin Media Server](https://www.youtube.com/watch?v=twJDyoj0tDc&t=719s)** - Complete Jellyfin installation and configuration
 
 ## Maintenance & Backup
 
-- Regularly update containers:  
-  `sudo docker-compose -f <service>.yml pull && sudo docker-compose -f <service>.yml up -d`
-- Backup volumes (e.g., `/path/to/nextcloud/config`, `/path/to/data`, `/path/to/mariadb/config`, etc.)
-- Monitor logs:  
-  `sudo docker-compose -f <service>.yml logs -f`
+### Update Services
+```bash
+# Update individual services
+docker-compose -f <service>.yml pull
+docker-compose -f <service>.yml up -d
+```
 
----
+### Backup Important Data
+```bash
+# Backup configs (SSD)
+sudo tar -czf backup-configs-$(date +%Y%m%d).tar.gz /home/YOUR_USER/docker/
+
+# Backup media (HDD) - if needed
+sudo tar -czf backup-media-$(date +%Y%m%d).tar.gz /media/ /storage/
+```
+
+### Logs
+```bash
+# View logs for specific service
+docker-compose -f <service>.yml logs -f
+
+# View all container logs
+docker logs <container_name>
+```
 
 ## Troubleshooting
 
-- Check container logs for errors.
-- Ensure ports are not blocked by Proxmox or UFW.
-- Verify Tailscale and Pi-hole are running and configured correctly.
+### Common Issues
+1. **Port conflicts**: Check if ports are already in use with `netstat -tulpn`
+2. **Permission issues**: Ensure PUID/PGID match your user (1000:1000)
+3. **Storage not accessible**: Verify HDD mounts with `df -h`
+4. **Tailscale not working**: Ensure LXC container is privileged with proper config
 
----
+### Useful Commands
+```bash
+# Check container status
+docker ps -a
+
+# Restart specific service
+docker-compose -f <service>.yml restart
+
+# View resource usage
+docker stats
+
+# Clean up unused images/containers
+docker system prune -a
+```
 
 ## Future Plans
-- [ ] Set up monitoring
-- [ ] Expand storage for a NAS
+- [ ] Add monitoring (Grafana/Prometheus)
+- [ ] Implement automated backups
+- [ ] Add reverse proxy (Nginx/Traefik)
+- [ ] Set up SSL certificates
+- [ ] Add more media automation tools

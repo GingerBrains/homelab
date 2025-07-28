@@ -1,4 +1,5 @@
-version: "3.8"
+version: '3.8'
+
 services:
   sonarr:
     image: lscr.io/linuxserver/sonarr:latest
@@ -6,11 +7,11 @@ services:
     environment:
       - PUID=1000
       - PGID=1000
-      - TZ=Etc/UTC
+      - TZ=Europe/Dublin
     volumes:
-      - /path/to/sonarr/data:/config
-      - /path/to/tvseries:/tv #optional
-      - /path/to/downloadclient-downloads:/downloads #optional
+      - /home/YOUR_USER/docker/sonarr:/config
+      - /media/tvseries:/tv
+      - /media/downloads:/downloads
     ports:
       - 8989:8989
     restart: unless-stopped 
