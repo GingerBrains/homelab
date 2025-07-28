@@ -12,6 +12,15 @@ This Ubuntu Server container running on Proxmox hosts various services for perso
 - **Prowlarr** (indexer management)
 - **Flaresolverr** (cloudflare bypass for indexers)
 
+## Prerequisites
+Before starting this setup, ensure you have:
+- **Proxmox VE** installed on your server
+- **Ubuntu Server LXC container** created in Proxmox
+- **Static IP** assigned to your container
+- **SSD storage** for config files (default filesystem)
+- **HDD storage** for media and bulk data (optional but recommended)
+- **Basic Linux knowledge** (command line, file permissions, networking)
+
 ## System Details
 - **Host**: Proxmox VE
 - **Container**: Ubuntu Server LXC
@@ -24,6 +33,20 @@ This Ubuntu Server container running on Proxmox hosts various services for perso
 - **DNS**: 8.8.8.8, 8.8.4.4 (or your Pi-hole IP)
 
 ## Installation Steps
+
+### 0. Initial Container Setup
+```bash
+# Update system and install essential packages
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y curl wget git nano htop
+
+# Create necessary directories
+sudo mkdir -p /home/YOUR_USER/docker
+sudo mkdir -p /media/movies /media/tvseries /media/downloads /storage
+
+# Set proper permissions
+sudo chown -R YOUR_USER:YOUR_USER /home/YOUR_USER/docker
+```
 
 ### 1. Initial Setup
 ```bash
@@ -67,21 +90,64 @@ docker-compose -f prowlarr.yml up -d
 docker-compose -f sonarr.yml up -d
 docker-compose -f radarr.yml up -d
 docker-compose -f flaresolverr.yml up -d
-docker-compose -f pihole.yml up -d
 ```
+
+**Note**: Pi-hole is installed directly on the host system using the official installer, not via Docker.
+
+### 5. Install Pi-hole (Host Installation)
+```bash
+# Install Pi-hole directly on the host
+curl -sSL https://install.pi-hole.net | bash
+
+# Follow the interactive installer prompts
+# - Choose your network interface
+# - Set static IP (if not already configured)
+# - Choose upstream DNS providers
+# - Select blocklists
+# - Set admin password
+# - Enable web interface
+# - Enable web server
+```
+
+## Service Configuration Notes
+
+### Nextcloud Setup
+1. **First-time setup**: Access http://YOUR_IP:8080
+2. **Create admin account** with secure password
+3. **Database setup**: Use the MariaDB credentials from the Docker Compose file
+4. **Trusted domains**: Add your IP to the trusted domains list
+
+### Jellyfin Setup
+1. **First-time setup**: Access http://YOUR_IP:8096
+2. **Create admin account** with secure password
+3. **Add media libraries**: Point to `/data/movies` and `/data/tvshows`
+4. **Configure metadata**: Enable movie/TV show metadata scraping
+
+### Media Automation (Sonarr/Radarr/Prowlarr)
+1. **Prowlarr first**: Set up indexers and download clients
+2. **Sonarr/Radarr**: Configure with your Prowlarr and qBittorrent
+3. **Quality profiles**: Set up your preferred quality settings
+4. **Root folders**: Point to `/tv` (Sonarr) and `/movies` (Radarr)
+
+### Pi-hole Setup
+1. **Installation**: Use the official installer script `curl -sSL https://install.pi-hole.net | bash`
+2. **Web interface**: Access http://YOUR_IP (port 80)
+3. **Admin password**: Set during installation or use `pihole -a -p` to change
+4. **Configure DNS**: Set your router's DNS to point to Pi-hole IP
+5. **Add blocklists**: Import popular ad-blocking lists via web interface
 
 ## Service Overview & Port Assignments
 
-| Service | Host Port | Container Port | YAML File | Purpose |
-|---------|-----------|----------------|-----------|---------|
-| Nextcloud | 8080 | 80 | `nextcloud.yml` | File storage |
-| Jellyfin | 8096 | 8096 | `jellyfin.yml` | Media streaming |
-| qBittorrent | 8081 | 8081 | `qbittorrent.yml` | Torrent client |
-| Prowlarr | 9696 | 9696 | `prowlarr.yml` | Indexer management |
-| Sonarr | 8989 | 8989 | `sonarr.yml` | TV automation |
-| Radarr | 7878 | 7878 | `radarr.yml` | Movie automation |
-| Flaresolverr | 8191 | 8191 | `flaresolverr.yml` | Cloudflare bypass |
-| Pi-hole | 8080 | 80 | `pihole.yml` | DNS/ad blocking |
+| Service | Host Port | Container Port | Installation Method | Purpose |
+|---------|-----------|----------------|-------------------|---------|
+| Nextcloud | 8080 | 80 | Docker | File storage |
+| Jellyfin | 8096 | 8096 | Docker | Media streaming |
+| qBittorrent | 8081 | 8081 | Docker | Torrent client |
+| Prowlarr | 9696 | 9696 | Docker | Indexer management |
+| Sonarr | 8989 | 8989 | Docker | TV automation |
+| Radarr | 7878 | 7878 | Docker | Movie automation |
+| Flaresolverr | 8191 | 8191 | Docker | Cloudflare bypass |
+| Pi-hole | 80 | 80 | Host Install | DNS/ad blocking |
 
 ## Accessing Services
 - **Nextcloud**: http://YOUR_IP:8080
@@ -91,7 +157,7 @@ docker-compose -f pihole.yml up -d
 - **Sonarr**: http://YOUR_IP:8989
 - **Radarr**: http://YOUR_IP:7878
 - **Flaresolverr**: http://YOUR_IP:8191
-- **Pi-hole**: http://YOUR_IP:8080
+- **Pi-hole**: http://YOUR_IP (port 80)
 
 ## Storage Configuration
 This setup uses a hybrid storage approach:
